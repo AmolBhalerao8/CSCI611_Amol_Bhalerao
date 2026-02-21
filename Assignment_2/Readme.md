@@ -2,7 +2,7 @@
 # CSCI 611 — Assignment 2: CNN on CIFAR-10
 
 **Author:** A. Bhalerao  
-**Course:** CSCI 611 — Spring 2025  
+**Course:** CSCI 611 — Spring 2026  
 **University:** California State University, Chico
 
 ---
