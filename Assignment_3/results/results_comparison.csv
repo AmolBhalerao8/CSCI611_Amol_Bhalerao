@@ -1,0 +1,4 @@
+model,mAP50,mAP50-95,Precision,Recall
+Pre-trained YOLOv8n (COCO),0.0,0.0,0.0,0.0
+Fine-tuned Config A (640),0.9535,0.8174,0.934,0.9081
+Fine-tuned Config B (1280),0.9473,0.7524,0.9339,0.8763

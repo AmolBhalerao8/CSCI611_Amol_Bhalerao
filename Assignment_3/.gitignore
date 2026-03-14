@@ -1,0 +1,12 @@
+# Dataset — do not commit (large, re-downloadable via Roboflow API)
+dataset/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db

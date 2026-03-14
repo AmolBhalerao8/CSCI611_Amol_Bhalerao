@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Assignment 3 Report – Amol Bhalerao</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Times New Roman", Times, serif;
+    font-size: 12pt;
+    line-height: 1.6;
+    color: #111;
+    max-width: 750px;
+    margin: 0 auto;
+    padding: 50px 60px;
+  }
+  h1 { font-size: 16pt; text-align: center; margin-bottom: 4px; }
+  .subtitle { text-align: center; font-size: 11pt; color: #444; margin-bottom: 20px; }
+  h2 { font-size: 13pt; margin-top: 24px; margin-bottom: 6px; border-bottom: 1px solid #999; padding-bottom: 2px; }
+  h3 { font-size: 12pt; margin-top: 14px; margin-bottom: 4px; }
+  p { margin-bottom: 10px; text-align: justify; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 11pt; }
+  th { background: #eee; border: 1px solid #aaa; padding: 5px 8px; text-align: center; }
+  td { border: 1px solid #aaa; padding: 5px 8px; text-align: center; }
+  .caption { font-size: 10pt; color: #555; text-align: center; margin-top: 3px; margin-bottom: 12px; }
+  ul, ol { margin: 8px 0 10px 22px; }
+  li { margin-bottom: 3px; }
+  .highlight { background: #f5f5f5; border-left: 3px solid #666; padding: 6px 10px; margin: 10px 0; font-size: 11pt; }
+  @media print {
+    body { padding: 0; }
+    .no-print { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<h1>Small Object Detection Using YOLO: Traffic Sign Detection</h1>
+<div class="subtitle">
+  CSCI 611 – Computer Vision &nbsp;|&nbsp; Spring 2026 &nbsp;|&nbsp; Assignment 3<br>
+  Amol Bhalerao &nbsp;|&nbsp; California State University, Chico
+</div>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>1. Introduction</h2>
+
+<p>
+  Detecting traffic signs from vehicle-mounted cameras is one of the more practically relevant
+  applications of object detection. It also happens to be challenging, signs are often small
+  relative to the full frame, partially occluded, or captured at oblique angles. This report
+  documents my work on training a YOLOv8 model specifically for this task, starting from a
+  COCO-pretrained baseline and iteratively improving it through fine-tuning and configuration
+  experiments.
+</p>
+<p>
+  The primary goal was to compare detection performance between (a) the off-the-shelf pretrained
+  model, and (b) fine-tuned versions trained on a traffic sign dataset, with different image
+  resolutions and augmentation settings.
+</p>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>2. Dataset Description and Preprocessing</h2>
+
+<h3>2.1 Dataset Source</h3>
+<p>
+  I used the <strong>Road Signs Detection</strong> dataset from Roboflow Universe —
+  an existing, publicly available dataset found online. It can be accessed at:<br>
+  <a href="https://universe.roboflow.com/roboflow-100/road-signs-6ih4y">
+  https://universe.roboflow.com/roboflow-100/road-signs-6ih4y</a> (version 1).
+</p>
+<p>
+  The dataset contains 2,093 images across 21 sign classes, pre-annotated with bounding
+  boxes in YOLO format. The classes include a range of Indonesian traffic signs: parking
+  area indicators, bus stop markers, pedestrian crossing signs, U-turn location signs,
+  and lane direction signs, among others. Images were already resized to 640×640 pixels
+  by Roboflow. Since this is a full publicly available dataset (not a custom subset),
+  it was not uploaded to GitHub — only the link is provided per the assignment instructions.
+</p>
+
+<table>
+  <tr><th>Split</th><th>Images</th><th>Percentage</th></tr>
+  <tr><td>Train</td><td>1,376</td><td>65.7%</td></tr>
+  <tr><td>Validation</td><td>488</td><td>23.3%</td></tr>
+  <tr><td>Test</td><td>229</td><td>11.0%</td></tr>
+  <tr><td><strong>Total</strong></td><td><strong>2,093</strong></td><td>100%</td></tr>
+</table>
+<p class="caption">Table 1: Dataset split sizes.</p>
+
+<h3>2.2 Preprocessing and Annotation</h3>
+<p>
+  Since the dataset was already annotated in YOLO format (each image paired with a
+  <code>.txt</code> file containing <code>class_id x_center y_center width height</code>
+  per line, all normalized to [0,1]), no additional annotation work was needed.
+  I did verify the annotation quality by plotting ground-truth bounding boxes over
+  a random sample of training images — the boxes were generally tight and accurate.
+</p>
+<p>
+  A bounding box size analysis showed that a significant portion of the annotations have
+  a relative area below 1% of the image — confirming that this is indeed a small object
+  detection problem where standard detection settings may not be sufficient.
+</p>
+
+<h3>2.3 Baseline Test Split</h3>
+<p>
+  The 229 test images (≈11% of the full dataset) were held out and used consistently
+  across all experiments to ensure fair comparison between the pretrained and fine-tuned models.
+</p>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>3. Experimental Setup</h2>
+
+<h3>3.1 Model Architecture</h3>
+<p>
+  I used <strong>YOLOv8 nano (YOLOv8n)</strong> from the Ultralytics library throughout
+  all experiments. The nano variant was chosen because it is the fastest to train and
+  run, making experimentation more practical. While larger variants (YOLOv8s, m, l)
+  would likely produce better absolute results, the nano model is sufficient to
+  demonstrate the methodology and compare configurations.
+</p>
+
+<h3>3.2 Anchor Box Tuning</h3>
+<p>
+  YOLOv8 uses an <strong>anchor-free detection head</strong>, which means traditional
+  anchor box tuning (as used in YOLOv5 and earlier) is not applicable here. Instead of
+  predicting offsets from fixed anchor boxes, YOLOv8 directly predicts bounding box
+  coordinates using Distribution Focal Loss (DFL). This actually benefits small object
+  detection because the model is not constrained by pre-defined anchor scales — it can
+  predict boxes of any size without needing to tune anchors for small objects specifically.
+</p>
+
+<h3>3.3 Training Configurations</h3>
+<p>
+  Two fine-tuning configurations were tested on top of the COCO-pretrained weights:
+</p>
+
+<table>
+  <tr>
+    <th>Setting</th>
+    <th>Baseline<br>(Pretrained)</th>
+    <th>Config A<br>(640px)</th>
+    <th>Config B<br>(1280px)</th>
+  </tr>
+  <tr><td>Image size</td><td>640</td><td>640</td><td>1280</td></tr>
+  <tr><td>Epochs</td><td>—</td><td>30</td><td>30</td></tr>
+  <tr><td>Batch size</td><td>—</td><td>8</td><td>4</td></tr>
+  <tr><td>Mosaic aug.</td><td>—</td><td>1.0</td><td>1.0</td></tr>
+  <tr><td>Scale jitter</td><td>—</td><td>0.5</td><td>0.7</td></tr>
+  <tr><td>Flip (lr/ud)</td><td>—</td><td>0.5 / 0.1</td><td>0.5 / 0.2</td></tr>
+  <tr><td>Random erasing</td><td>—</td><td>—</td><td>0.1</td></tr>
+  <tr><td>Rotation</td><td>—</td><td>±10°</td><td>±15°</td></tr>
+  <tr><td>Approx. train time</td><td>—</td><td>~17 min</td><td>~51 min</td></tr>
+</table>
+<p class="caption">Table 2: Training configuration summary. All training done on Google Colab T4 GPU.</p>
+
+<p>
+  Config B uses a higher resolution (1280px) and more aggressive augmentation specifically
+  intended to help with small object detection. The larger scale jitter (0.7) forces the model
+  to recognize signs at many different scales, and random erasing simulates partial occlusion.
+  The trade-off is a 3× longer training time and lower batch size due to GPU memory constraints.
+</p>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>4. Results and Analysis</h2>
+
+<h3>4.1 Overall Comparison</h3>
+
+<table>
+  <tr>
+    <th>Model</th>
+    <th>mAP@50</th>
+    <th>mAP@50-95</th>
+    <th>Precision</th>
+    <th>Recall</th>
+  </tr>
+  <tr><td>Pre-trained YOLOv8n (COCO)</td><td>0.000</td><td>0.000</td><td>0.000</td><td>0.000</td></tr>
+  <tr><td>Fine-tuned Config A (640px)</td><td><strong>0.954</strong></td><td><strong>0.817</strong></td><td>0.934</td><td><strong>0.908</strong></td></tr>
+  <tr><td>Fine-tuned Config B (1280px)</td><td>0.947</td><td>0.752</td><td>0.934</td><td>0.876</td></tr>
+</table>
+<p class="caption">Table 3: Test set metrics for all three model configurations.</p>
+
+<p>
+  The pretrained COCO model scored zero across all metrics on the test set. This was expected —
+  the COCO dataset does not include traffic sign categories matching this dataset's classes,
+  so the model has no basis for detecting them. It essentially detected nothing relevant, which
+  underlines how important domain-specific fine-tuning is even for a model as capable as YOLOv8.
+</p>
+<p>
+  After just 30 epochs of fine-tuning, Config A reached a mAP@50 of <strong>0.954</strong>
+  — a dramatic improvement. The model learned to recognize all 21 sign classes from scratch
+  within a short training run. By epoch 1, mAP@50 was already at 0.172, and it climbed
+  steadily through all 30 epochs without showing obvious overfitting (validation loss
+  continued to decrease in parallel with training loss).
+</p>
+<p>
+  Config B (1280px) achieved a slightly lower mAP@50 (0.947) and notably lower mAP@50-95
+  (0.752 vs. 0.817). This was somewhat surprising — I expected the higher resolution to help
+  with small objects. In hindsight, the reduced batch size (4 vs. 8) likely made training
+  less stable, and 30 epochs may not have been enough for the model to fully converge at
+  1280px. The higher resolution also means the feature pyramid covers a different scale range,
+  which may need longer training to adapt to. Config B did however take 3× longer to train.
+</p>
+
+<h3>4.2 Confidence Threshold Sweep</h3>
+<p>
+  I swept the confidence threshold from 0.1 to 0.7 on the Config B model. The results showed
+  a typical precision-recall tradeoff: lower confidence thresholds increase recall but bring
+  in more false positives, while higher thresholds improve precision but miss detections.
+  The best F1 score was found around a threshold of <strong>0.3–0.35</strong>. Using
+  the default threshold of 0.25 was reasonably close to optimal.
+</p>
+<p>
+  One observation worth noting: for small objects, erring on the side of lower confidence
+  thresholds is generally preferred. Missing a traffic sign (false negative) is more
+  dangerous in a real autonomous driving context than a false positive. This guided the
+  decision to keep the inference threshold at 0.25 for the final evaluation.
+</p>
+
+<h3>4.3 NMS / IoU Threshold Sweep</h3>
+<p>
+  The NMS IoU threshold controls when two overlapping predictions are considered duplicates
+  and one is suppressed. For this dataset, an IoU threshold of <strong>0.5–0.6</strong>
+  produced the best mAP@50. Using a very low IoU threshold (e.g., 0.3) caused too much
+  suppression of nearby signs, hurting recall. Using a high threshold (0.8) let in
+  duplicate predictions, reducing precision.
+</p>
+
+<h3>4.4 False Positive and False Negative Analysis</h3>
+<p>
+  Running inference on the 229 test images with the Config B model (conf &gt; 0.5), a total
+  of 216 images had at least one high-confidence detection. Visual inspection of a random
+  sample of results revealed two recurring patterns:
+</p>
+<ul>
+  <li>
+    <strong>False Negatives:</strong> The most common misses were on signs that appeared
+    at the very edge of the frame, in heavy shadow, or at a steep angle. These are
+    exactly the cases where small pixel coverage combined with low contrast made it hard
+    for the model to fire with sufficient confidence. Lowering the confidence threshold
+    from 0.5 to 0.25 recovered most of these missed detections at the cost of a small
+    increase in false positives.
+  </li>
+  <li>
+    <strong>False Positives:</strong> A small number of false positives appeared on
+    background textures that visually resembled sign shapes — for example, rectangular
+    wall markings or colored road surface markings. These tended to have low confidence
+    scores (0.25–0.35) and were largely eliminated by raising the threshold to 0.4 or above.
+  </li>
+</ul>
+<p>
+  This analysis confirmed that a confidence threshold of 0.3 offers the best balance for
+  this dataset — capturing most true detections while suppressing the majority of false
+  positives. For safety-critical deployment (such as a driver assistance system), a
+  threshold of 0.25 would be preferable to minimize missed detections.
+</p>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>5. Challenges in Detecting Small Objects</h2>
+
+<p>
+  Working through this assignment highlighted several challenges specific to small object
+  detection:
+</p>
+<ol>
+  <li>
+    <strong>Low pixel coverage:</strong> Many signs in the dataset occupy fewer than 32×32
+    pixels in the original frame. The backbone's downsampling reduces spatial resolution
+    as features pass through deeper layers, making it progressively harder to retain the
+    fine-grained detail needed for small object recognition.
+  </li>
+  <li>
+    <strong>Class imbalance:</strong> Some sign categories appeared hundreds of times in
+    the training set, while a few were much rarer. This caused the model to perform
+    better on frequent classes and struggle on underrepresented ones, as visible in
+    the per-class rows of the confusion matrix.
+  </li>
+  <li>
+    <strong>Appearance variability:</strong> Even within a single sign class, lighting
+    conditions, mounting angles, and distances created significant variation. Signs
+    photographed from 30 meters away look very different from close-up shots, and the
+    model needed enough augmentation diversity to handle both.
+  </li>
+  <li>
+    <strong>Dataset domain:</strong> The signs in this dataset are Indonesian traffic
+    signs, which differ visually from American or European signs. A model trained on
+    this dataset would need to be retrained or adapted before deployment in a U.S.
+    context like Chico street footage.
+  </li>
+</ol>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>6. Suggestions for Improvement</h2>
+
+<p>
+  Based on the experiments, several directions could improve detection performance further:
+</p>
+<ul>
+  <li>
+    <strong>Larger model variants:</strong> YOLOv8n was used here for speed. Using YOLOv8s
+    or YOLOv8m would increase model capacity and likely push mAP@50-95 higher without
+    changing the training pipeline at all.
+  </li>
+  <li>
+    <strong>More epochs for Config B:</strong> The 1280px model was likely undertrained at
+    30 epochs. Running it for 50–75 epochs would likely close the performance gap with
+    Config A and potentially surpass it, especially on mAP@50-95 where bounding box
+    localization precision matters more.
+  </li>
+  <li>
+    <strong>SAHI (Sliced Inference):</strong> At inference time, slicing large images into
+    overlapping tiles before running detection, then merging results, is a well-known
+    technique for improving small object detection without any retraining. This would be
+    a practical improvement for deployment on high-resolution dashcam footage.
+  </li>
+  <li>
+    <strong>Address class imbalance:</strong> Oversampling rare classes during training or
+    using weighted loss functions could help the model perform more uniformly across
+    all 21 sign categories.
+  </li>
+  <li>
+    <strong>Additional data for Chico streets:</strong> The professor provided Chico street
+    footage that could be annotated and added to the training set. Even a small number of
+    locally-annotated images would help the model adapt to the specific camera angle,
+    lighting, and sign styles found in this region.
+  </li>
+</ul>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>7. Conclusion</h2>
+
+<p>
+  This assignment demonstrated that YOLOv8, when fine-tuned on domain-specific data,
+  can achieve strong performance on traffic sign detection — going from 0% to 95.4% mAP@50
+  in 30 epochs of training. The experiments also showed that simply increasing image
+  resolution does not guarantee better results; training stability, batch size, and
+  the number of epochs all interact in ways that can offset the theoretical benefits of
+  higher resolution.
+</p>
+<p>
+  The confidence threshold and NMS IoU sweep confirmed that the default Ultralytics
+  settings (conf=0.25, iou=0.6) are close to optimal for this dataset, though a
+  slightly lower confidence threshold (0.3) gave the best F1 score in practice.
+</p>
+<p>
+  The most important takeaway is that pretrained COCO weights, while powerful for
+  general object detection, are essentially useless for specialized domains like
+  traffic sign detection without fine-tuning. Domain adaptation through training on
+  task-specific data is not optional — it is the baseline requirement.
+</p>
+
+<!-- ══════════════════════════════════════════════════════════ -->
+<h2>References</h2>
+<ol>
+  <li>Jocher, G., et al. (2023). Ultralytics YOLOv8. https://github.com/ultralytics/ultralytics</li>
+  <li>Roboflow Road Signs Detection Dataset. https://universe.roboflow.com/roboflow-100/road-signs-6ih4y</li>
+  <li>Redmon, J., &amp; Farhadi, A. (2018). YOLOv3: An Incremental Improvement. arXiv:1804.02767</li>
+  <li>Akyon, F. C., et al. (2022). Slicing Aided Hyper Inference and Fine-tuning for Small Object Detection. ICIP 2022.</li>
+</ol>
+
+<br>
+<p class="no-print" style="color:#888; font-size:10pt; text-align:center;">
+  To save as PDF: open this file in a browser → File → Print → Save as PDF (set margins to None or Minimum)
+</p>
+
+</body>
+</html>
