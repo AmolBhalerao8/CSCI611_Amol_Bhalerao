@@ -46,11 +46,13 @@ The notebook downloads the **Road Signs Detection** dataset automatically via th
 
 1. Go to [roboflow.com](https://roboflow.com) and create a free account.
 2. Navigate to **Settings → API Keys** and copy your key.
-3. Open `yolo_detection.ipynb` and replace `"YOUR_ROBOFLOW_API_KEY"` in **Section 3** with your key.
+3. Open `yolo_detection.ipynb` and paste your key in **Section 3**:
 
 ```python
-ROBOFLOW_API_KEY = "your_actual_key_here"   # Section 3, Cell 1
+ROBOFLOW_API_KEY = "your_api_key_here"   # Section 3, Cell 1
 ```
+
+> **Note for grader:** The API key is already set in the submitted notebook.
 
 ### 3. Run the Notebook
 
@@ -91,7 +93,7 @@ Training on CPU is slow. For faster results:
 |--------|-----------|--------|-------|--------------|-------|
 | Baseline (Pre-trained) | — | — | — | — | COCO weights, no fine-tuning |
 | Config A | 640 px | 30 | 8 | Default mosaic + flips | Standard fine-tuning |
-| Config B | 1280 px | 30 | 4 | Enhanced (scale, blur, mosaic) | Optimized for small objects |
+| Config B | 1280 px | 30 | 4 | Enhanced (scale, erasing, mosaic) | Optimized for small objects |
 
 Additional experiments in the notebook:
 - Confidence threshold sweep (0.1 → 0.7)
